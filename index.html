@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Web 3D City Runner V7.1 (Head Control)</title>
+    <title>Web 3D City Runner V7.2 (Box Default)</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -39,7 +39,7 @@
             100% { opacity: 0; transform: translateY(-20px); }
         }
 
-        /* --- 觸控按鈕 (手機模式) --- */
+        /* 手機觸控按鈕 */
         .control-btn {
             position: absolute; bottom: 40px; width: 80px; height: 80px;
             border-radius: 50%; color: white; font-weight: 900; font-size: 30px;
@@ -50,19 +50,18 @@
         }
         .control-btn:active { transform: scale(0.9); }
         #btn-fire { right: 30px; background: rgba(255, 50, 50, 0.4); border: 3px solid rgba(255, 255, 255, 0.6); font-size: 18px; }
-        #btn-fire:active { background: rgba(255, 50, 50, 0.7); }
         #btn-left { left: 30px; background: rgba(255, 255, 255, 0.2); border: 3px solid rgba(255, 255, 255, 0.5); }
         #btn-right { left: 130px; background: rgba(255, 255, 255, 0.2); border: 3px solid rgba(255, 255, 255, 0.5); }
         @media (min-width: 1024px) { .control-btn { display: none; } }
 
-        /* --- 攝像頭預覽視窗 --- */
+        /* 攝像頭視窗 */
         #camera-preview {
             position: absolute; top: 20px; left: 20px; width: 160px; height: 120px;
             background: #000; border: 2px solid #fff; border-radius: 10px;
             z-index: 20; display: none; overflow: hidden; pointer-events: auto;
         }
-        #camera-video { display: none; } 
-        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); /* 鏡像顯示 */ }
+        #camera-video { display: none; }
+        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
         #face-status {
             position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
             color: #0f0; font-size: 10px; text-align: center; padding: 2px 0; white-space: nowrap;
@@ -137,7 +136,7 @@
                     <label>🎮 控制方式</label>
                     <select id="control-mode">
                         <option value="normal">鍵盤 / 觸控 (預設)</option>
-                        <option value="camera">📷 頭部體感控制 (V7.1)</option>
+                        <option value="camera">📷 頭部體感控制 (V7.2)</option>
                     </select>
                 </div>
             </div>
@@ -145,9 +144,9 @@
                 <div class="select-group">
                     <label>🏃 角色模型</label>
                     <select id="player-selector">
+                        <option value="none" selected>🟦 使用方塊人 (最順暢)</option>
                         <option value="player.glb">預設角色</option>
                         <option value="player2.glb">角色 B</option>
-                        <option value="none">方塊人</option>
                     </select>
                 </div>
                 <div class="select-group">
@@ -163,7 +162,7 @@
         <button onclick="initGame()">START GAME</button>
         <div id="loading-text">
             <b>普通模式：</b> [←/→]移動 | [Space/上滑]跳躍 | [Z/按鈕]射擊<br>
-            <b>鏡頭模式：</b> 頭轉左/右(移動) | 抬頭(跳躍) | 張嘴(射擊)
+            <b>鏡頭模式：</b> 轉頭(移動) | 閉雙眼(跳躍) | 張嘴(射擊)
         </div>
     </div>
 
@@ -177,14 +176,13 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <script>
-        // --- 變數宣告 ---
         let controlMode = 'normal';
         let cameraObj = null;
         let faceMesh = null;
         let lastActionTime = 0;
         const ACTION_COOLDOWN = 400; 
 
-        // --- MediaPipe Face Mesh 邏輯 ---
+        // --- MediaPipe 邏輯 ---
         const videoElement = document.getElementById('camera-video');
         const canvasElement = document.getElementById('camera-canvas');
         const canvasCtx = canvasElement.getContext('2d');
@@ -197,17 +195,15 @@
             
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const landmarks = results.multiFaceLandmarks[0];
-                
-                // 繪製網格 (視覺回饋)
                 drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C050', lineWidth: 0.5});
-                // 強調鼻子和臉頰，方便對準
-                const keyPoints = [1, 234, 454, 10, 152]; // 鼻, 右臉, 左臉, 頂, 下巴
-                for(let i of keyPoints) {
-                    const p = landmarks[i];
+                
+                // 繪製關鍵點輔助
+                const points = [1, 234, 454]; // 鼻尖, 右臉邊緣, 左臉邊緣
+                points.forEach(i => {
                     canvasCtx.beginPath();
-                    canvasCtx.arc(p.x * canvasElement.width, p.y * canvasElement.height, 3, 0, 2*Math.PI);
+                    canvasCtx.arc(landmarks[i].x * canvasElement.width, landmarks[i].y * canvasElement.height, 3, 0, 2*Math.PI);
                     canvasCtx.fillStyle = "#00FF00"; canvasCtx.fill();
-                }
+                });
 
                 detectGestures(landmarks);
             } else {
@@ -216,45 +212,40 @@
             canvasCtx.restore();
         }
 
-        // 核心偵測邏輯：改為「轉頭」與「抬頭」
         function detectGestures(landmarks) {
             const now = Date.now();
             
-            // 關鍵點索引
+            // 1. 轉頭偵測 (Yaw Rotation)
+            // 邏輯：計算「鼻尖」相對於「臉部中心(兩耳中點)」的偏移量
+            // 使用 234 (右耳側) 和 454 (左耳側) 來定義臉的寬度與中心
+            const rightSide = landmarks[234]; // 畫面左側
+            const leftSide = landmarks[454];  // 畫面右側
             const nose = landmarks[1];
-            const rightCheek = landmarks[234]; // 使用者的右臉頰 (畫面左側)
-            const leftCheek = landmarks[454];  // 使用者的左臉頰 (畫面右側)
-            const upperLip = landmarks[13];
-            const lowerLip = landmarks[14];
-            const midEye = landmarks[168]; // 兩眼之間 (眉心下方)
 
-            // 1. 左右轉頭 (Yaw Calculation)
-            // 原理：計算鼻子到左右臉頰的水平距離。
-            // 當頭向右轉，鼻子會靠近右臉頰(234)，遠離左臉頰(454)。
-            const distToRight = Math.abs(nose.x - rightCheek.x);
-            const distToLeft = Math.abs(nose.x - leftCheek.x);
+            const faceWidth = Math.abs(leftSide.x - rightSide.x);
+            const faceCenter = (leftSide.x + rightSide.x) / 2;
             
-            // 轉頭判斷閾值 (比例)
-            // 如果一邊的距離是另一邊的 0.6 倍以下，判定為轉頭
-            const turnThreshold = 0.6; 
+            // 計算歸一化的轉動值 (-0.5 ~ 0.5 之間)
+            // 正值代表鼻尖偏向畫面右側(使用者左轉)，負值代表鼻尖偏向畫面左側(使用者右轉)
+            // 注意：MediaPipe 座標 x 軸往右是增加
+            const turnVal = (nose.x - faceCenter) / faceWidth;
+            
+            // 閾值：數值越大代表需要轉頭轉越大力
+            const turnThreshold = 0.12; 
 
-            // 2. 抬頭 (Pitch Calculation)
-            // 原理：計算鼻子(1)與眉心(168)的垂直距離 (y軸)。
-            // 正常情況下 nose.y > midEye.y (鼻子在眉心下方)。
-            // 抬頭時，鼻子在畫面中會「升高」，與眉心的Y軸距離變短。
-            const verticalDist = nose.y - midEye.y;
-            const lookUpThreshold = 0.035; // 數值越小代表抬得越高 (需要根據實際調整)
+            // 2. 閉眼偵測 (Double Blink)
+            // 左眼: 159(上) 145(下), 右眼: 386(上) 374(下)
+            const leftEyeOpen = Math.abs(landmarks[159].y - landmarks[145].y);
+            const rightEyeOpen = Math.abs(landmarks[386].y - landmarks[374].y);
+            const blinkThreshold = 0.012; // 閉眼閾值
 
             // 3. 張嘴
-            const mouthOpen = Math.abs(upperLip.y - lowerLip.y);
+            const mouthOpen = Math.abs(landmarks[13].y - landmarks[14].y);
             const mouthThreshold = 0.05;
 
-            // --- 動作觸發 (包含冷卻時間) ---
+            // --- 動作判定 ---
 
-            // 顯示狀態數據方便調試
-            // console.log(`R:${distToRight.toFixed(2)} L:${distToLeft.toFixed(2)} V:${verticalDist.toFixed(3)}`);
-
-            // 優先權：射擊 > 跳躍 > 移動
+            // A. 射擊 (張嘴)
             if (mouthOpen > mouthThreshold) {
                 if (now - lastActionTime > 200) {
                     fireBullet();
@@ -264,36 +255,36 @@
                 return;
             }
 
-            if (verticalDist < lookUpThreshold) {
-                // 抬頭判定
+            // B. 跳躍 (閉雙眼)
+            if (leftEyeOpen < blinkThreshold && rightEyeOpen < blinkThreshold) {
                 if (!isJumping) {
                     isJumping = true; jumpVelocity = jumpStrength; playSFX('jump');
-                    faceStatus.innerText = "⏫ 抬頭跳躍!";
+                    faceStatus.innerText = "😌 閉眼跳躍!";
                     lastActionTime = now;
-                } else {
-                    faceStatus.innerText = "⏫ 保持抬頭";
                 }
                 return;
             }
 
+            // C. 移動 (轉頭)
             if (now - lastActionTime > ACTION_COOLDOWN) {
-                // 向右轉 (鼻子靠近右臉頰)
-                if (distToRight < distToLeft * turnThreshold) {
-                    if (currentLane < 1) {
+                // 鼻尖偏右 (x變大) -> 使用者向左轉頭 -> 往左移動 (Mirror: User's Left = Screen Left Logic)
+                // 修正邏輯：當我們看鏡子時，頭往右轉，鼻子往右移。
+                // 這裡我們設定：鼻子往畫面右側(x大) = 往右道; 鼻子往畫面左側(x小) = 往左道
+                
+                if (turnVal > turnThreshold) {
+                    if (currentLane < 1) { // 向右
                         moveLane(1);
                         faceStatus.innerText = "➡️ 頭轉右";
                         lastActionTime = now;
                     }
-                }
-                // 向左轉 (鼻子靠近左臉頰)
-                else if (distToLeft < distToRight * turnThreshold) {
-                    if (currentLane > -1) {
+                } else if (turnVal < -turnThreshold) {
+                    if (currentLane > -1) { // 向左
                         moveLane(-1);
                         faceStatus.innerText = "⬅️ 頭轉左";
                         lastActionTime = now;
                     }
                 } else {
-                    faceStatus.innerText = "😐 偵測中...";
+                    faceStatus.innerText = "👀 偵測中...";
                 }
             }
         }
@@ -305,52 +296,32 @@
             faceMesh = new FaceMesh({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
             }});
-            
-            faceMesh.setOptions({
-                maxNumFaces: 1,
-                refineLandmarks: true,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-            
+            faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
             faceMesh.onResults(onResults);
 
             if(typeof Camera !== 'undefined') {
                 cameraObj = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await faceMesh.send({image: videoElement});
-                    },
-                    width: 320,
-                    height: 240
+                    onFrame: async () => { await faceMesh.send({image: videoElement}); },
+                    width: 320, height: 240
                 });
                 await cameraObj.start();
-            } else {
-                alert("無法載入相機庫，請檢查網路連線");
-            }
+            } else { alert("無法載入相機庫"); }
         }
 
-        // --- 遊戲核心代碼 (保留原有架構) ---
-        
-        // 音效
+        // --- 遊戲核心 ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let bgmInterval;
-        let noteIndex = 0;
+        let bgmInterval; let noteIndex = 0;
         const melody = [330, 330, 330, 440, 523, 523, 440, 0, 392, 392, 349, 349, 330, 0, 0, 0];
 
         function playTone(freq, type, duration, vol, delay = 0) {
             if(freq <= 0) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
             gain.gain.setValueAtTime(vol, audioCtx.currentTime + delay);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(audioCtx.currentTime + delay);
-            osc.stop(audioCtx.currentTime + delay + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime + delay); osc.stop(audioCtx.currentTime + delay + duration);
         }
-
         function startBGM() {
             if(bgmInterval) clearInterval(bgmInterval);
             bgmInterval = setInterval(() => {
@@ -360,7 +331,6 @@
                 noteIndex++;
             }, 200);
         }
-
         function playSFX(type) {
             if (type === 'jump') playTone(400, 'sine', 0.3, 0.1);
             if (type === 'coin') playTone(1500, 'square', 0.1, 0.05);
@@ -369,33 +339,23 @@
             if (type === 'hit') { playTone(200, 'sine', 0.1, 0.1); playTone(100, 'square', 0.2, 0.1, 0.05); }
             if (type === 'powerup') { playTone(600, 'triangle', 0.1, 0.1); playTone(900, 'triangle', 0.1, 0.1, 0.1); }
         }
-
         function showMessage(text) {
             const display = document.getElementById('message-display');
             display.innerHTML = ''; 
             const msg = document.createElement('div');
-            msg.className = 'message-box';
-            msg.innerText = text;
+            msg.className = 'message-box'; msg.innerText = text;
             display.appendChild(msg);
             setTimeout(() => { if(display.contains(msg)) display.removeChild(msg); }, 2000);
         }
 
-        // 場景
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 30, 120);
-
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 30, 120);
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
-        camera.position.set(0, 3.5, 8);
-        camera.lookAt(0, 1, -10);
-
+        camera.position.set(0, 3.5, 8); camera.lookAt(0, 1, -10);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
-        // 燈光
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); scene.add(hemiLight);
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -405,72 +365,41 @@
         dirLight.shadow.camera.top = 50; dirLight.shadow.camera.bottom = -50;
         scene.add(dirLight);
 
-        // 環境
-        const roadGeo = new THREE.PlaneGeometry(14, 1000);
-        const roadMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
-        const road = new THREE.Mesh(roadGeo, roadMat);
-        road.rotation.x = -Math.PI / 2; road.position.z = -400;
-        road.receiveShadow = true; scene.add(road);
-
-        const stripes = [];
-        const stripeGeo = new THREE.PlaneGeometry(0.5, 4);
-        const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const roadGeo = new THREE.PlaneGeometry(14, 1000); const roadMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        const road = new THREE.Mesh(roadGeo, roadMat); road.rotation.x = -Math.PI / 2; road.position.z = -400; road.receiveShadow = true; scene.add(road);
+        const stripes = []; const stripeGeo = new THREE.PlaneGeometry(0.5, 4); const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
         for(let i=0; i<30; i++) {
-            const sL = new THREE.Mesh(stripeGeo, stripeMat);
-            const sR = new THREE.Mesh(stripeGeo, stripeMat);
-            sL.rotation.x = -Math.PI/2; sR.rotation.x = -Math.PI/2;
-            sL.position.set(-2.5, 0.02, -i*10); sR.position.set(2.5, 0.02, -i*10);
+            const sL = new THREE.Mesh(stripeGeo, stripeMat); const sR = new THREE.Mesh(stripeGeo, stripeMat);
+            sL.rotation.x = -Math.PI/2; sR.rotation.x = -Math.PI/2; sL.position.set(-2.5, 0.02, -i*10); sR.position.set(2.5, 0.02, -i*10);
             scene.add(sL); scene.add(sR); stripes.push(sL, sR);
         }
 
-        const buildings = [];
-        const buildingColors = [0x88CCFF, 0xFFAAAA, 0xAAFFAA, 0xFFEEAA, 0xCCCCCC];
-        const bGeo = new THREE.BoxGeometry(1, 1, 1);
+        const buildings = []; const buildingColors = [0x88CCFF, 0xFFAAAA, 0xAAFFAA, 0xFFEEAA, 0xCCCCCC]; const bGeo = new THREE.BoxGeometry(1, 1, 1);
         function createBuilding(x, z) {
-            const h = 10 + Math.random() * 30;
-            const w = 5 + Math.random() * 5; const d = 5 + Math.random() * 5;
+            const h = 10 + Math.random() * 30; const w = 5 + Math.random() * 5; const d = 5 + Math.random() * 5;
             const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
             const bMat = new THREE.MeshPhongMaterial({ color: color });
-            const mesh = new THREE.Mesh(bGeo, bMat);
-            mesh.position.set(x, h/2, z); mesh.scale.set(w, h, d);
-            mesh.castShadow = true; mesh.receiveShadow = true;
-            scene.add(mesh); buildings.push(mesh);
+            const mesh = new THREE.Mesh(bGeo, bMat); mesh.position.set(x, h/2, z); mesh.scale.set(w, h, d);
+            mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh); buildings.push(mesh);
         }
-        for(let i=0; i<40; i++) {
-            createBuilding(-20 - Math.random()*30, -i * 15);
-            createBuilding(20 + Math.random()*30, -i * 15);
-        }
+        for(let i=0; i<40; i++) { createBuilding(-20 - Math.random()*30, -i * 15); createBuilding(20 + Math.random()*30, -i * 15); }
 
-        const clouds = [];
-        const cloudGeo = new THREE.BoxGeometry(4, 2, 3);
-        const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        const clouds = []; const cloudGeo = new THREE.BoxGeometry(4, 2, 3); const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
         for(let i=0; i<15; i++) {
-            const cloud = new THREE.Mesh(cloudGeo, cloudMat);
-            cloud.position.set((Math.random()*60)-30, 15 + Math.random()*10, -i*20);
-            scene.add(cloud); clouds.push(cloud);
+            const cloud = new THREE.Mesh(cloudGeo, cloudMat); cloud.position.set((Math.random()*60)-30, 15 + Math.random()*10, -i*20); scene.add(cloud); clouds.push(cloud);
         }
 
-        // 載入器
         const loader = new THREE.GLTFLoader();
-        let playerGroup = new THREE.Group(); scene.add(playerGroup);
-        let playerMesh, mixer;
-        let obstacleModel = null;
-        let coinModel = null;
-        let powerupModel = null;
-
+        let playerGroup = new THREE.Group(); scene.add(playerGroup); let playerMesh, mixer;
+        let obstacleModel = null; let coinModel = null; let powerupModel = null;
         const ts = new Date().getTime();
         loader.load('coin.glb?v='+ts, (g) => { coinModel = g.scene; coinModel.traverse(n=>{if(n.isMesh){n.castShadow=true; n.material.color.setHex(0xFFD700);}}); }, undefined, ()=>{});
         loader.load('powerup.glb?v='+ts, (g) => { powerupModel = g.scene; powerupModel.traverse(n=>{if(n.isMesh){n.castShadow=true; n.material.color.setHex(0x00FF00);}}); }, undefined, ()=>{});
 
-        let currentLane = 0; let isJumping = false; let jumpVelocity = 0;
-        const gravity = -0.03; const jumpStrength = 0.6;
+        let currentLane = 0; let isJumping = false; let jumpVelocity = 0; const gravity = -0.03; const jumpStrength = 0.6;
         let gameActive = false; let score = 0; let totalCoinsCollected = 0; let gameSpeed = 0.4;
-        
-        const bullets = []; const bulletSpeed = 1.5;
-        const bulletGeo = new THREE.SphereGeometry(0.2, 8, 8);
-        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+        const bullets = []; const bulletSpeed = 1.5; const bulletGeo = new THREE.SphereGeometry(0.2, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
         let shotsPerFire = 1; let powerupTimer = null;
-
         const obstacles = []; const coins = []; const powerups = [];
 
         function loadPlayer(filename) {
@@ -497,26 +426,20 @@
 
         function spawnObject() {
             if(!gameActive) return;
-            const lane = Math.floor(Math.random()*3)-1; const zPos = -120;
-            const rnd = Math.random();
-            if(rnd < 0.6) { // 障礙物
+            const lane = Math.floor(Math.random()*3)-1; const zPos = -120; const rnd = Math.random();
+            if(rnd < 0.6) {
                 let obs = obstacleModel ? obstacleModel.clone() : new THREE.Mesh(new THREE.BoxGeometry(2,2,2), new THREE.MeshPhongMaterial({color:0xff4444}));
-                obs.position.set(lane*2.5, 1, zPos); obs.userData = {type:'obstacle'};
-                scene.add(obs); obstacles.push(obs);
-            } else if (rnd < 0.9) { // 金幣
+                obs.position.set(lane*2.5, 1, zPos); obs.userData = {type:'obstacle'}; scene.add(obs); obstacles.push(obs);
+            } else if (rnd < 0.9) {
                 for(let i=0; i<3; i++) {
                     let c = coinModel ? coinModel.clone() : new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.1,16), new THREE.MeshPhongMaterial({color:0xffff00}));
-                    if(!coinModel) c.rotation.x = Math.PI/2;
-                    c.position.set(lane*2.5, 1, zPos - i*3); c.userData = {active:true, type:'coin'};
-                    scene.add(c); coins.push(c);
+                    if(!coinModel) c.rotation.x = Math.PI/2; c.position.set(lane*2.5, 1, zPos - i*3); c.userData = {active:true, type:'coin'}; scene.add(c); coins.push(c);
                 }
-            } else { // 道具
+            } else {
                 let p = powerupModel ? powerupModel.clone() : new THREE.Mesh(new THREE.SphereGeometry(0.7), new THREE.MeshPhongMaterial({color:0x00ff00}));
-                p.position.set(lane*2.5, 1, zPos); p.userData = {active:true, type:'powerup'};
-                scene.add(p); powerups.push(p);
+                p.position.set(lane*2.5, 1, zPos); p.userData = {active:true, type:'powerup'}; scene.add(p); powerups.push(p);
             }
         }
-
         setInterval(spawnObject, 1000);
         setInterval(()=>{ if(gameActive && gameSpeed < 1.8) gameSpeed += 0.002; }, 1000);
 
@@ -527,8 +450,7 @@
         }
 
         function fireBullet() {
-            if(!gameActive) return;
-            playSFX('shoot');
+            if(!gameActive) return; playSFX('shoot');
             const spread = shotsPerFire > 1 ? (shotsPerFire - 1) * 0.5 : 0;
             for (let i = 0; i < shotsPerFire; i++) {
                 const b = new THREE.Mesh(bulletGeo, bulletMat);
@@ -540,17 +462,13 @@
 
         function initGame() {
             controlMode = document.getElementById('control-mode').value;
-            
             if (controlMode === 'camera') {
                 startCamera();
                 document.querySelectorAll('.control-btn').forEach(el => el.style.display = 'none');
                 showMessage("📷 鏡頭模式：請確保臉部在左上角框內");
             } else {
-                if(window.innerWidth < 1024) {
-                    document.querySelectorAll('.control-btn').forEach(el => el.style.display = 'flex');
-                }
+                if(window.innerWidth < 1024) { document.querySelectorAll('.control-btn').forEach(el => el.style.display = 'flex'); }
             }
-
             loadPlayer(document.getElementById('player-selector').value);
             loadObstacleTemplate(document.getElementById('obstacle-selector').value);
             document.getElementById('start-screen').style.display = 'none';
@@ -558,7 +476,6 @@
             startBGM();
         }
 
-        // 鍵盤監聽
         document.addEventListener('keydown', (e) => {
             if(!gameActive) return;
             if(e.key === 'ArrowLeft') moveLane(-1);
@@ -567,24 +484,17 @@
             if(e.key === 'z' || e.key === 'Z') fireBullet();
         });
 
-        // 觸控 (上滑跳躍)
         let touchStartX = 0; let touchStartY = 0; const swipeThreshold = 30;
-        document.addEventListener('touchstart', (e) => {
-            if(!gameActive) return;
-            touchStartX = e.changedTouches[0].screenX; touchStartY = e.changedTouches[0].screenY;
-        }, {passive: false});
+        document.addEventListener('touchstart', (e) => { if(!gameActive) return; touchStartX = e.changedTouches[0].screenX; touchStartY = e.changedTouches[0].screenY; }, {passive: false});
         document.addEventListener('touchend', (e) => {
             if(!gameActive) return;
             let yDiff = e.changedTouches[0].screenY - touchStartY;
-            if (Math.abs(yDiff) > swipeThreshold && yDiff < 0 && !isJumping) {
-                isJumping = true; jumpVelocity = jumpStrength; playSFX('jump');
-            }
+            if (Math.abs(yDiff) > swipeThreshold && yDiff < 0 && !isJumping) { isJumping = true; jumpVelocity = jumpStrength; playSFX('jump'); }
         }, {passive: false});
 
         const clock = new THREE.Clock();
         function animate() {
-            requestAnimationFrame(animate);
-            const delta = clock.getDelta();
+            requestAnimationFrame(animate); const delta = clock.getDelta();
             if(mixer) mixer.update(delta);
 
             stripes.forEach(s => { s.position.z += gameSpeed; if(s.position.z > 10) s.position.z = -290; });
@@ -592,64 +502,41 @@
             clouds.forEach(c => { c.position.z += gameSpeed*0.5; if(c.position.z > 20) { c.position.z = -300; c.position.x = (Math.random()*60)-30; }});
 
             if(!gameActive) return;
-
             playerGroup.position.x += (currentLane*2.5 - playerGroup.position.x) * 0.15;
-            if(isJumping) { playerGroup.position.y += jumpVelocity; jumpVelocity += gravity; if(playerGroup.position.y<=0){playerGroup.position.y=0; isJumping=false;} } 
-            else { playerGroup.position.y = 0; }
+            if(isJumping) { playerGroup.position.y += jumpVelocity; jumpVelocity += gravity; if(playerGroup.position.y<=0){playerGroup.position.y=0; isJumping=false;} } else { playerGroup.position.y = 0; }
 
             for(let i=bullets.length-1; i>=0; i--) {
                 let b = bullets[i]; b.position.z -= bulletSpeed;
                 for(let j=obstacles.length-1; j>=0; j--) {
                     let obs = obstacles[j];
-                    if(b.position.distanceTo(obs.position) < 1.8) {
-                        playSFX('hit'); scene.remove(b); bullets.splice(i,1); scene.remove(obs); obstacles.splice(j,1);
-                        score+=100; document.getElementById('score-val').innerText = score; break;
-                    }
+                    if(b.position.distanceTo(obs.position) < 1.8) { playSFX('hit'); scene.remove(b); bullets.splice(i,1); scene.remove(obs); obstacles.splice(j,1); score+=100; document.getElementById('score-val').innerText = score; break; }
                 }
                 if(b.position.z < -100) { scene.remove(b); bullets.splice(i,1); }
             }
-
             for(let i=obstacles.length-1; i>=0; i--) {
                 obstacles[i].position.z += gameSpeed;
-                if(Math.abs(obstacles[i].position.z - playerGroup.position.z)<1.5 && 
-                   Math.abs(obstacles[i].position.x - playerGroup.position.x)<1.0 && playerGroup.position.y < 1.5) gameOver();
+                if(Math.abs(obstacles[i].position.z - playerGroup.position.z)<1.5 && Math.abs(obstacles[i].position.x - playerGroup.position.x)<1.0 && playerGroup.position.y < 1.5) gameOver();
                 if(obstacles[i].position.z > 10) { scene.remove(obstacles[i]); obstacles.splice(i,1); score+=10; document.getElementById('score-val').innerText=score; }
             }
-
             coins.forEach(c => c.rotation.y += 0.1);
             for(let i=coins.length-1; i>=0; i--) {
                 let c = coins[i]; c.position.z += gameSpeed;
                 if(c.userData.active && Math.abs(c.position.z-playerGroup.position.z)<1.5 && Math.abs(c.position.x-playerGroup.position.x)<1.0 && Math.abs(playerGroup.position.y-c.position.y)<1.5) {
-                    c.userData.active = false; scene.remove(c); coins.splice(i,1);
-                    totalCoinsCollected++; score+=50; document.getElementById('coin-val').innerText=totalCoinsCollected; document.getElementById('score-val').innerText=score; playSFX('coin');
+                    c.userData.active = false; scene.remove(c); coins.splice(i,1); totalCoinsCollected++; score+=50; document.getElementById('coin-val').innerText=totalCoinsCollected; document.getElementById('score-val').innerText=score; playSFX('coin');
                 } else if(c.position.z > 10) { scene.remove(c); coins.splice(i,1); }
             }
-
             powerups.forEach(p => p.rotation.y += 0.05);
             for(let i=powerups.length-1; i>=0; i--) {
                 let p = powerups[i]; p.position.z += gameSpeed;
                 if(p.userData.active && Math.abs(p.position.z-playerGroup.position.z)<1.5 && Math.abs(p.position.x-playerGroup.position.x)<1.0 && Math.abs(playerGroup.position.y-p.position.y)<1.5) {
-                    p.userData.active = false; scene.remove(p); powerups.splice(i,1);
-                    playSFX('powerup'); showMessage("🔥 3連發模式啟動！");
-                    shotsPerFire = 3; document.getElementById('shots-val').innerText = "Lv.MAX";
-                    if(powerupTimer) clearTimeout(powerupTimer);
-                    powerupTimer = setTimeout(() => { shotsPerFire = 1; document.getElementById('shots-val').innerText = "Lv.1"; showMessage("⚠️ 武器系統冷卻"); }, 10000);
+                    p.userData.active = false; scene.remove(p); powerups.splice(i,1); playSFX('powerup'); showMessage("🔥 3連發模式啟動！"); shotsPerFire = 3; document.getElementById('shots-val').innerText = "Lv.MAX"; if(powerupTimer) clearTimeout(powerupTimer); powerupTimer = setTimeout(() => { shotsPerFire = 1; document.getElementById('shots-val').innerText = "Lv.1"; showMessage("⚠️ 武器系統冷卻"); }, 10000);
                 } else if(p.position.z > 10) { scene.remove(p); powerups.splice(i,1); }
             }
             renderer.render(scene, camera);
         }
 
-        function gameOver() {
-            gameActive = false; clearInterval(bgmInterval); playSFX('crash');
-            document.getElementById('final-score').innerText = score;
-            document.getElementById('game-over-screen').style.display = 'flex';
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        function gameOver() { gameActive = false; clearInterval(bgmInterval); playSFX('crash'); document.getElementById('final-score').innerText = score; document.getElementById('game-over-screen').style.display = 'flex'; }
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
         animate();
     </script>
 </body>
