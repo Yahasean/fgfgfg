@@ -2,13 +2,14 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Web 3D City Runner V6.0 (Full)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Web 3D City Runner V6.0 (Mobile Ready)</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; background: #87CEEB; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; background: #87CEEB; touch-action: none; /* 禁止瀏覽器預設觸控行為 */ }
         
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; display: flex; flex-direction: column;
+            pointer-events: none; display: flex; flex-direction: column; z-index: 10;
         }
         #score-board {
             padding: 20px; color: #fff; font-size: 28px; font-weight: 900;
@@ -22,6 +23,7 @@
         
         #ui-bottom {
             flex-grow: 1; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 50px;
+            pointer-events: none;
         }
         .message-box {
             background: rgba(0,0,0,0.7); color: #fff; padding: 15px 30px; border-radius: 50px;
@@ -35,6 +37,37 @@
             100% { opacity: 0; transform: translateY(-20px); }
         }
 
+        /* --- 手機版新增：射擊按鈕 --- */
+        #mobile-shoot-btn {
+            position: absolute;
+            bottom: 40px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 0, 0, 0.5);
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto; /* 允許點擊 */
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+            transition: transform 0.1s;
+            z-index: 20;
+        }
+        #mobile-shoot-btn:active {
+            transform: scale(0.9);
+            background: rgba(255, 0, 0, 0.8);
+        }
+        /* 在大螢幕上可以隱藏，或者保留作為視覺元素，這裡我們先保留 */
+        @media (min-width: 1024px) {
+            #mobile-shoot-btn { display: none; } 
+        }
+
         .overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.85); 
@@ -45,11 +78,13 @@
         h1 { 
             color: #FFD700; font-size: 60px; margin: 0 0 10px 0; 
             text-shadow: 4px 4px 0 #000; font-style: italic; letter-spacing: 3px;
+            text-align: center;
         }
 
         .setup-panel {
             background: rgba(255,255,255,0.1); padding: 20px 40px; border-radius: 20px;
             border: 2px solid rgba(255,255,255,0.2); display: flex; gap: 30px; margin-bottom: 30px;
+            flex-wrap: wrap; justify-content: center;
         }
         .select-group { display: flex; flex-direction: column; align-items: flex-start; }
         .select-group label { color: #00ffff; font-size: 16px; margin-bottom: 8px; font-weight: bold; }
@@ -68,7 +103,7 @@
         }
         button:active { transform: translateY(4px); box-shadow: 0 2px 0 #004ba0; }
         
-        #loading-text { margin-top: 15px; color: #aaa; font-size: 14px; }
+        #loading-text { margin-top: 15px; color: #aaa; font-size: 14px; text-align: center; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -78,6 +113,9 @@
             <div>SCORE: <span id="score-val">0</span> | COINS: <span id="coin-val">0</span></div>
             <div id="powerup-status">GUN: <span id="shots-val">Lv.1</span></div>
         </div>
+        
+        <div id="mobile-shoot-btn" onclick="fireBullet()">FIRE</div>
+
         <div id="ui-bottom">
             <div id="message-display"></div>
         </div>
@@ -104,7 +142,10 @@
             </div>
         </div>
         <button onclick="startGame()">START GAME</button>
-        <div id="loading-text">按 <b style="color:#fff">Z</b> 發射子彈 | 躲避障礙 | 收集金幣</div>
+        <div id="loading-text">
+            PC: [←/→] 移動 | [Space] 跳躍 | [Z] 射擊<br>
+            Mobile: [左右滑動] 移動 | [上滑] 跳躍 | [按鈕] 射擊
+        </div>
     </div>
 
     <div id="game-over-screen" class="overlay" style="display: none;">
@@ -307,6 +348,7 @@
         setInterval(()=>{ if(gameActive && gameSpeed < 1.8) gameSpeed += 0.002; }, 1000);
 
         function fireBullet() {
+            if(!gameActive) return; // 防止遊戲結束後還能射擊
             playSFX('shoot');
             const spread = shotsPerFire > 1 ? (shotsPerFire - 1) * 0.2 : 0;
             for (let i = 0; i < shotsPerFire; i++) {
@@ -325,6 +367,7 @@
             startBGM();
         }
 
+        // --- PC 鍵盤控制 ---
         document.addEventListener('keydown', (e) => {
             if(!gameActive) return;
             if(e.key === 'ArrowLeft' && currentLane > -1) currentLane--;
@@ -332,6 +375,51 @@
             if((e.key === 'ArrowUp' || e.code === 'Space') && !isJumping) { isJumping = true; jumpVelocity = jumpStrength; playSFX('jump'); }
             if(e.key === 'z' || e.key === 'Z') fireBullet();
         });
+
+        // --- 手機 觸控控制 (新增) ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+        const swipeThreshold = 30; // 滑動觸發的最小距離
+
+        document.addEventListener('touchstart', (e) => {
+            if(!gameActive) return;
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, {passive: false});
+
+        document.addEventListener('touchend', (e) => {
+            if(!gameActive) return;
+            let touchEndX = e.changedTouches[0].screenX;
+            let touchEndY = e.changedTouches[0].screenY;
+            handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
+        }, {passive: false});
+
+        function handleSwipeGesture(startX, startY, endX, endY) {
+            let xDiff = endX - startX;
+            let yDiff = endY - startY;
+
+            // 判斷是水平滑動還是垂直滑動 (看哪個軸位移大)
+            if (Math.abs(xDiff) > Math.abs(yDiff)) {
+                // 水平滑動 (左右移動)
+                if (Math.abs(xDiff) > swipeThreshold) {
+                    if (xDiff > 0 && currentLane > -1) { // 向右滑 (注意：螢幕座標往右是X增加，但在這裡我們根據邏輯判斷方向)
+                         // 修正：這裡應該是 currentLane < 1 向右
+                         // 再次修正：Web座標 X往右是正。
+                         // 所以 xDiff > 0 是向右。 currentLane 範圍 -1, 0, 1
+                         if(currentLane < 1) currentLane++;
+                    } else if (xDiff < 0 && currentLane > -1) { // 向左滑
+                        if(currentLane > -1) currentLane--;
+                    }
+                }
+            } else {
+                // 垂直滑動 (向上跳躍)
+                if (Math.abs(yDiff) > swipeThreshold) {
+                    if (yDiff < 0 && !isJumping) { // 螢幕座標 Y往上是負數
+                        isJumping = true; jumpVelocity = jumpStrength; playSFX('jump');
+                    }
+                }
+            }
+        }
 
         const clock = new THREE.Clock();
         function animate() {
