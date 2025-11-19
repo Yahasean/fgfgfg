@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Web 3D City Runner V7.2 (Box Default)</title>
+    <title>Web 3D City Runner V7.3 (Fixed Logic)</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -61,7 +61,7 @@
             z-index: 20; display: none; overflow: hidden; pointer-events: auto;
         }
         #camera-video { display: none; }
-        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
+        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); /* 鏡像顯示給使用者看，但不影響座標邏輯 */ }
         #face-status {
             position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
             color: #0f0; font-size: 10px; text-align: center; padding: 2px 0; white-space: nowrap;
@@ -136,7 +136,7 @@
                     <label>🎮 控制方式</label>
                     <select id="control-mode">
                         <option value="normal">鍵盤 / 觸控 (預設)</option>
-                        <option value="camera">📷 頭部體感控制 (V7.2)</option>
+                        <option value="camera">📷 頭部體感控制 (V7.3)</option>
                     </select>
                 </div>
             </div>
@@ -216,8 +216,6 @@
             const now = Date.now();
             
             // 1. 轉頭偵測 (Yaw Rotation)
-            // 邏輯：計算「鼻尖」相對於「臉部中心(兩耳中點)」的偏移量
-            // 使用 234 (右耳側) 和 454 (左耳側) 來定義臉的寬度與中心
             const rightSide = landmarks[234]; // 畫面左側
             const leftSide = landmarks[454];  // 畫面右側
             const nose = landmarks[1];
@@ -225,19 +223,17 @@
             const faceWidth = Math.abs(leftSide.x - rightSide.x);
             const faceCenter = (leftSide.x + rightSide.x) / 2;
             
-            // 計算歸一化的轉動值 (-0.5 ~ 0.5 之間)
-            // 正值代表鼻尖偏向畫面右側(使用者左轉)，負值代表鼻尖偏向畫面左側(使用者右轉)
-            // 注意：MediaPipe 座標 x 軸往右是增加
+            // 計算歸一化的轉動值
+            // nose.x > faceCenter (正值) -> 鼻尖偏向畫面右側 -> 代表使用者向左轉
+            // nose.x < faceCenter (負值) -> 鼻尖偏向畫面左側 -> 代表使用者向右轉
             const turnVal = (nose.x - faceCenter) / faceWidth;
             
-            // 閾值：數值越大代表需要轉頭轉越大力
             const turnThreshold = 0.12; 
 
-            // 2. 閉眼偵測 (Double Blink)
-            // 左眼: 159(上) 145(下), 右眼: 386(上) 374(下)
+            // 2. 閉眼偵測
             const leftEyeOpen = Math.abs(landmarks[159].y - landmarks[145].y);
             const rightEyeOpen = Math.abs(landmarks[386].y - landmarks[374].y);
-            const blinkThreshold = 0.012; // 閉眼閾值
+            const blinkThreshold = 0.012;
 
             // 3. 張嘴
             const mouthOpen = Math.abs(landmarks[13].y - landmarks[14].y);
@@ -245,7 +241,7 @@
 
             // --- 動作判定 ---
 
-            // A. 射擊 (張嘴)
+            // A. 射擊
             if (mouthOpen > mouthThreshold) {
                 if (now - lastActionTime > 200) {
                     fireBullet();
@@ -265,19 +261,18 @@
                 return;
             }
 
-            // C. 移動 (轉頭)
+            // C. 移動 (轉頭) - 修正版邏輯
             if (now - lastActionTime > ACTION_COOLDOWN) {
-                // 鼻尖偏右 (x變大) -> 使用者向左轉頭 -> 往左移動 (Mirror: User's Left = Screen Left Logic)
-                // 修正邏輯：當我們看鏡子時，頭往右轉，鼻子往右移。
-                // 這裡我們設定：鼻子往畫面右側(x大) = 往右道; 鼻子往畫面左側(x小) = 往左道
-                
-                if (turnVal > turnThreshold) {
+                // 如果數值小於 負的閾值 -> 鼻尖偏向畫面左側 -> 代表頭往右轉 -> 執行向右移
+                if (turnVal < -turnThreshold) {
                     if (currentLane < 1) { // 向右
                         moveLane(1);
                         faceStatus.innerText = "➡️ 頭轉右";
                         lastActionTime = now;
                     }
-                } else if (turnVal < -turnThreshold) {
+                } 
+                // 如果數值大於 正的閾值 -> 鼻尖偏向畫面右側 -> 代表頭往左轉 -> 執行向左移
+                else if (turnVal > turnThreshold) {
                     if (currentLane > -1) { // 向左
                         moveLane(-1);
                         faceStatus.innerText = "⬅️ 頭轉左";
