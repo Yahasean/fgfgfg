@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Web 3D City Runner V7.0 (Face Control)</title>
+    <title>Web 3D City Runner V7.1 (Head Control)</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -61,11 +61,11 @@
             background: #000; border: 2px solid #fff; border-radius: 10px;
             z-index: 20; display: none; overflow: hidden; pointer-events: auto;
         }
-        #camera-video { display: none; } /* 隱藏原始 video，只顯示畫布 */
-        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); /* 鏡像 */ }
+        #camera-video { display: none; } 
+        #camera-canvas { width: 100%; height: 100%; transform: scaleX(-1); /* 鏡像顯示 */ }
         #face-status {
             position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
-            color: #0f0; font-size: 10px; text-align: center; padding: 2px 0;
+            color: #0f0; font-size: 10px; text-align: center; padding: 2px 0; white-space: nowrap;
         }
 
         .overlay {
@@ -137,7 +137,7 @@
                     <label>🎮 控制方式</label>
                     <select id="control-mode">
                         <option value="normal">鍵盤 / 觸控 (預設)</option>
-                        <option value="camera">📷 臉部追蹤 (Beta)</option>
+                        <option value="camera">📷 頭部體感控制 (V7.1)</option>
                     </select>
                 </div>
             </div>
@@ -163,7 +163,7 @@
         <button onclick="initGame()">START GAME</button>
         <div id="loading-text">
             <b>普通模式：</b> [←/→]移動 | [Space/上滑]跳躍 | [Z/按鈕]射擊<br>
-            <b>鏡頭模式：</b> 眨左眼(往左) | 眨右眼(往右) | 抬眉毛(跳躍) | 張嘴(射擊)
+            <b>鏡頭模式：</b> 頭轉左/右(移動) | 抬頭(跳躍) | 張嘴(射擊)
         </div>
     </div>
 
@@ -182,7 +182,7 @@
         let cameraObj = null;
         let faceMesh = null;
         let lastActionTime = 0;
-        const ACTION_COOLDOWN = 500; // 動作冷卻時間，防止連續觸發
+        const ACTION_COOLDOWN = 400; 
 
         // --- MediaPipe Face Mesh 邏輯 ---
         const videoElement = document.getElementById('camera-video');
@@ -199,90 +199,102 @@
                 const landmarks = results.multiFaceLandmarks[0];
                 
                 // 繪製網格 (視覺回饋)
-                drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
-                drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
-                drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {color: '#FF3030'});
+                drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C050', lineWidth: 0.5});
+                // 強調鼻子和臉頰，方便對準
+                const keyPoints = [1, 234, 454, 10, 152]; // 鼻, 右臉, 左臉, 頂, 下巴
+                for(let i of keyPoints) {
+                    const p = landmarks[i];
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(p.x * canvasElement.width, p.y * canvasElement.height, 3, 0, 2*Math.PI);
+                    canvasCtx.fillStyle = "#00FF00"; canvasCtx.fill();
+                }
 
-                // --- 偵測邏輯 ---
                 detectGestures(landmarks);
-                faceStatus.innerText = "偵測中...";
             } else {
                 faceStatus.innerText = "未偵測到臉部";
             }
             canvasCtx.restore();
         }
 
+        // 核心偵測邏輯：改為「轉頭」與「抬頭」
         function detectGestures(landmarks) {
             const now = Date.now();
-            if (now - lastActionTime < 300) return; // 簡單的防抖動
-
-            // 1. 取得關鍵點
-            // 左眼上下 (386, 374), 右眼上下 (159, 145) *MediaPipe左右與人臉鏡像是相反的
-            // 修正：MediaPipe 索引：左眼(33,133,159,145)，右眼(362,263,386,374)
-            // 實際上我們看畫面是鏡像，所以畫面左邊是使用者的右眼。
-            // 這裡為了直覺，定義：User's Right Eye (畫面左邊) -> 眨眼往右 (對應按鍵右)
-            // User's Left Eye (畫面右邊) -> 眨眼往左 (對應按鍵左)
             
-            const leftEyeTop = landmarks[159]; const leftEyeBottom = landmarks[145];
-            const rightEyeTop = landmarks[386]; const rightEyeBottom = landmarks[374];
-            
-            const upperLip = landmarks[13]; const lowerLip = landmarks[14];
-            const leftEyebrow = landmarks[105]; // 眉心偏左
-            const rightEyebrow = landmarks[334]; // 眉心偏右
-            const noseTip = landmarks[1];
+            // 關鍵點索引
+            const nose = landmarks[1];
+            const rightCheek = landmarks[234]; // 使用者的右臉頰 (畫面左側)
+            const leftCheek = landmarks[454];  // 使用者的左臉頰 (畫面右側)
+            const upperLip = landmarks[13];
+            const lowerLip = landmarks[14];
+            const midEye = landmarks[168]; // 兩眼之間 (眉心下方)
 
-            // 計算開合度 (垂直距離)
-            const leftEyeOpen = Math.abs(leftEyeTop.y - leftEyeBottom.y);
-            const rightEyeOpen = Math.abs(rightEyeTop.y - rightEyeBottom.y);
+            // 1. 左右轉頭 (Yaw Calculation)
+            // 原理：計算鼻子到左右臉頰的水平距離。
+            // 當頭向右轉，鼻子會靠近右臉頰(234)，遠離左臉頰(454)。
+            const distToRight = Math.abs(nose.x - rightCheek.x);
+            const distToLeft = Math.abs(nose.x - leftCheek.x);
+            
+            // 轉頭判斷閾值 (比例)
+            // 如果一邊的距離是另一邊的 0.6 倍以下，判定為轉頭
+            const turnThreshold = 0.6; 
+
+            // 2. 抬頭 (Pitch Calculation)
+            // 原理：計算鼻子(1)與眉心(168)的垂直距離 (y軸)。
+            // 正常情況下 nose.y > midEye.y (鼻子在眉心下方)。
+            // 抬頭時，鼻子在畫面中會「升高」，與眉心的Y軸距離變短。
+            const verticalDist = nose.y - midEye.y;
+            const lookUpThreshold = 0.035; // 數值越小代表抬得越高 (需要根據實際調整)
+
+            // 3. 張嘴
             const mouthOpen = Math.abs(upperLip.y - lowerLip.y);
-            
-            // 眉毛高度 (眉毛到鼻子的距離，越大代表抬越高)
-            const browHeight = Math.abs(leftEyebrow.y - noseTip.y) + Math.abs(rightEyebrow.y - noseTip.y);
+            const mouthThreshold = 0.05;
 
-            // --- 判定閾值 (這些值可能需要根據距離微調) ---
-            // 這裡使用相對比例會更準，但為求簡化先用經驗閾值
-            // 眨眼判定：一邊閉著(小於閾值)，另一邊開著(大於閾值)
-            const eyeClosedThresh = 0.012; 
-            const eyeOpenThresh = 0.02;
-            const mouthOpenThresh = 0.05;
-            const browHighThresh = 0.13; // 抬眉閾值
+            // --- 動作觸發 (包含冷卻時間) ---
 
-            // 狀態顯示 (Debug用)
-            // console.log(`L:${leftEyeOpen.toFixed(3)} R:${rightEyeOpen.toFixed(3)} M:${mouthOpen.toFixed(3)} B:${browHeight.toFixed(3)}`);
+            // 顯示狀態數據方便調試
+            // console.log(`R:${distToRight.toFixed(2)} L:${distToLeft.toFixed(2)} V:${verticalDist.toFixed(3)}`);
 
-            // 1. 射擊 (張嘴)
-            if (mouthOpen > mouthOpenThresh) {
-                fireBullet();
-                faceStatus.innerText = "🔥 開火!";
-                lastActionTime = now;
-                return;
-            }
-
-            // 2. 跳躍 (抬眉毛)
-            if (browHeight > browHighThresh) {
-                if (!isJumping) {
-                    isJumping = true; jumpVelocity = jumpStrength; playSFX('jump');
-                    faceStatus.innerText = "⏫ 跳躍!";
+            // 優先權：射擊 > 跳躍 > 移動
+            if (mouthOpen > mouthThreshold) {
+                if (now - lastActionTime > 200) {
+                    fireBullet();
+                    faceStatus.innerText = "🔥 張嘴射擊!";
                     lastActionTime = now;
                 }
                 return;
             }
 
-            // 3. 左右移動 (單眼眨眼)
-            // 左眼閉 (使用者左眼，畫面右側) -> 往左
-            if (leftEyeOpen < eyeClosedThresh && rightEyeOpen > eyeOpenThresh) {
-                moveLane(-1);
-                faceStatus.innerText = "⬅️ 往左";
-                lastActionTime = now + 200; // 轉向冷卻稍長
+            if (verticalDist < lookUpThreshold) {
+                // 抬頭判定
+                if (!isJumping) {
+                    isJumping = true; jumpVelocity = jumpStrength; playSFX('jump');
+                    faceStatus.innerText = "⏫ 抬頭跳躍!";
+                    lastActionTime = now;
+                } else {
+                    faceStatus.innerText = "⏫ 保持抬頭";
+                }
                 return;
             }
 
-            // 右眼閉 (使用者右眼，畫面左側) -> 往右
-            if (rightEyeOpen < eyeClosedThresh && leftEyeOpen > eyeOpenThresh) {
-                moveLane(1);
-                faceStatus.innerText = "➡️ 往右";
-                lastActionTime = now + 200;
-                return;
+            if (now - lastActionTime > ACTION_COOLDOWN) {
+                // 向右轉 (鼻子靠近右臉頰)
+                if (distToRight < distToLeft * turnThreshold) {
+                    if (currentLane < 1) {
+                        moveLane(1);
+                        faceStatus.innerText = "➡️ 頭轉右";
+                        lastActionTime = now;
+                    }
+                }
+                // 向左轉 (鼻子靠近左臉頰)
+                else if (distToLeft < distToRight * turnThreshold) {
+                    if (currentLane > -1) {
+                        moveLane(-1);
+                        faceStatus.innerText = "⬅️ 頭轉左";
+                        lastActionTime = now;
+                    }
+                } else {
+                    faceStatus.innerText = "😐 偵測中...";
+                }
             }
         }
 
@@ -529,14 +541,11 @@
         function initGame() {
             controlMode = document.getElementById('control-mode').value;
             
-            // 如果是相機模式，啟動相機
             if (controlMode === 'camera') {
                 startCamera();
-                // 隱藏觸控按鈕
                 document.querySelectorAll('.control-btn').forEach(el => el.style.display = 'none');
                 showMessage("📷 鏡頭模式：請確保臉部在左上角框內");
             } else {
-                // 如果是普通模式，且是手機，確保按鈕顯示
                 if(window.innerWidth < 1024) {
                     document.querySelectorAll('.control-btn').forEach(el => el.style.display = 'flex');
                 }
@@ -632,10 +641,6 @@
 
         function gameOver() {
             gameActive = false; clearInterval(bgmInterval); playSFX('crash');
-            if(cameraObj) {
-                // 遊戲結束時不一定要關相機，但可以考慮停止
-                // cameraObj.stop(); 
-            }
             document.getElementById('final-score').innerText = score;
             document.getElementById('game-over-screen').style.display = 'flex';
         }
