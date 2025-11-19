@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Web 3D City Runner V6.0 (Full)</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; background: #87CEEB; }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+        }
+        #score-board {
+            padding: 20px; color: #fff; font-size: 28px; font-weight: 900;
+            text-shadow: 2px 2px 0 #000; -webkit-text-stroke: 1px black;
+            display: flex; justify-content: space-between;
+        }
+        #powerup-status {
+            color: #00ff00; 
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        #ui-bottom {
+            flex-grow: 1; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 50px;
+        }
+        .message-box {
+            background: rgba(0,0,0,0.7); color: #fff; padding: 15px 30px; border-radius: 50px;
+            font-size: 24px; font-weight: bold; border: 2px solid #fff;
+            animation: fadeUp 2s forwards;
+        }
+        @keyframes fadeUp {
+            0% { opacity: 0; transform: translateY(20px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: auto; backdrop-filter: blur(8px); z-index: 99;
+        }
+
+        h1 { 
+            color: #FFD700; font-size: 60px; margin: 0 0 10px 0; 
+            text-shadow: 4px 4px 0 #000; font-style: italic; letter-spacing: 3px;
+        }
+
+        .setup-panel {
+            background: rgba(255,255,255,0.1); padding: 20px 40px; border-radius: 20px;
+            border: 2px solid rgba(255,255,255,0.2); display: flex; gap: 30px; margin-bottom: 30px;
+        }
+        .select-group { display: flex; flex-direction: column; align-items: flex-start; }
+        .select-group label { color: #00ffff; font-size: 16px; margin-bottom: 8px; font-weight: bold; }
+        
+        select {
+            padding: 10px 15px; font-size: 16px; border-radius: 8px; border: none;
+            background: #fff; cursor: pointer; outline: none; min-width: 180px;
+        }
+
+        button {
+            padding: 15px 60px; font-size: 24px; cursor: pointer;
+            background: linear-gradient(45deg, #00e5ff, #2979ff);
+            border: 3px solid #fff; border-radius: 50px; color: white;
+            font-weight: bold; box-shadow: 0 6px 0 #004ba0, 0 10px 10px rgba(0,0,0,0.3);
+            transition: 0.1s; text-transform: uppercase;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 2px 0 #004ba0; }
+        
+        #loading-text { margin-top: 15px; color: #aaa; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="score-board">
+            <div>SCORE: <span id="score-val">0</span> | COINS: <span id="coin-val">0</span></div>
+            <div id="powerup-status">GUN: <span id="shots-val">Lv.1</span></div>
+        </div>
+        <div id="ui-bottom">
+            <div id="message-display"></div>
+        </div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>CITY RUNNER</h1>
+        <div class="setup-panel">
+            <div class="select-group">
+                <label>🏃 角色模型</label>
+                <select id="player-selector">
+                    <option value="player.glb">預設角色 (player.glb)</option>
+                    <option value="player2.glb">角色 B (player2.glb)</option>
+                    <option value="none">使用方塊人</option>
+                </select>
+            </div>
+            <div class="select-group">
+                <label>🚧 障礙物模型</label>
+                <select id="obstacle-selector">
+                    <option value="obstacle.glb">預設障礙 (obstacle.glb)</option>
+                    <option value="obstacle2.glb">障礙 B (obstacle2.glb)</option>
+                    <option value="none">使用紅箱子</option>
+                </select>
+            </div>
+        </div>
+        <button onclick="startGame()">START GAME</button>
+        <div id="loading-text">按 <b style="color:#fff">Z</b> 發射子彈 | 躲避障礙 | 收集金幣</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay" style="display: none;">
+        <h1 style="color: #ff4444;">CRASHED!</h1>
+        <p style="color:white; font-size: 24px;">FINAL SCORE: <span id="final-score">0</span></p>
+        <button onclick="location.reload()">RETRY</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // --- 音效 ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let bgmInterval;
+        let noteIndex = 0;
+        const melody = [330, 330, 330, 440, 523, 523, 440, 0, 392, 392, 349, 349, 330, 0, 0, 0];
+
+        function playTone(freq, type, duration, vol, delay = 0) {
+            if(freq <= 0) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime + delay);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime + delay);
+            osc.stop(audioCtx.currentTime + delay + duration);
+        }
+
+        function startBGM() {
+            if(bgmInterval) clearInterval(bgmInterval);
+            bgmInterval = setInterval(() => {
+                const note = melody[noteIndex % melody.length];
+                playTone(note, 'triangle', 0.15, 0.05);
+                if (noteIndex % 4 === 0) playTone(100, 'square', 0.1, 0.03);
+                noteIndex++;
+            }, 200);
+        }
+
+        function playSFX(type) {
+            if (type === 'jump') playTone(400, 'sine', 0.3, 0.1);
+            if (type === 'coin') playTone(1500, 'square', 0.1, 0.05);
+            if (type === 'crash') playTone(60, 'sawtooth', 0.6, 0.2);
+            if (type === 'shoot') playTone(800, 'square', 0.05, 0.05);
+            if (type === 'hit') { playTone(200, 'sine', 0.1, 0.1); playTone(100, 'square', 0.2, 0.1, 0.05); }
+            if (type === 'powerup') { playTone(600, 'triangle', 0.1, 0.1); playTone(900, 'triangle', 0.1, 0.1, 0.1); }
+        }
+
+        function showMessage(text) {
+            const display = document.getElementById('message-display');
+            display.innerHTML = ''; // 清除舊訊息
+            const msg = document.createElement('div');
+            msg.className = 'message-box';
+            msg.innerText = text;
+            display.appendChild(msg);
+            setTimeout(() => { if(display.contains(msg)) display.removeChild(msg); }, 2000);
+        }
+
+        // --- 場景 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 30, 120);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
+        camera.position.set(0, 3.5, 8);
+        camera.lookAt(0, 1, -10);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // 燈光
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); scene.add(hemiLight);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(50, 100, 50); dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -50; dirLight.shadow.camera.right = 50;
+        dirLight.shadow.camera.top = 50; dirLight.shadow.camera.bottom = -50;
+        scene.add(dirLight);
+
+        // 環境
+        const roadGeo = new THREE.PlaneGeometry(14, 1000);
+        const roadMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        const road = new THREE.Mesh(roadGeo, roadMat);
+        road.rotation.x = -Math.PI / 2; road.position.z = -400;
+        road.receiveShadow = true; scene.add(road);
+
+        const stripes = [];
+        const stripeGeo = new THREE.PlaneGeometry(0.5, 4);
+        const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        for(let i=0; i<30; i++) {
+            const sL = new THREE.Mesh(stripeGeo, stripeMat);
+            const sR = new THREE.Mesh(stripeGeo, stripeMat);
+            sL.rotation.x = -Math.PI/2; sR.rotation.x = -Math.PI/2;
+            sL.position.set(-2.5, 0.02, -i*10); sR.position.set(2.5, 0.02, -i*10);
+            scene.add(sL); scene.add(sR); stripes.push(sL, sR);
+        }
+
+        const buildings = [];
+        const buildingColors = [0x88CCFF, 0xFFAAAA, 0xAAFFAA, 0xFFEEAA, 0xCCCCCC];
+        const bGeo = new THREE.BoxGeometry(1, 1, 1);
+        function createBuilding(x, z) {
+            const h = 10 + Math.random() * 30;
+            const w = 5 + Math.random() * 5; const d = 5 + Math.random() * 5;
+            const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+            const bMat = new THREE.MeshPhongMaterial({ color: color });
+            const mesh = new THREE.Mesh(bGeo, bMat);
+            mesh.position.set(x, h/2, z); mesh.scale.set(w, h, d);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            scene.add(mesh); buildings.push(mesh);
+        }
+        for(let i=0; i<40; i++) {
+            createBuilding(-20 - Math.random()*30, -i * 15);
+            createBuilding(20 + Math.random()*30, -i * 15);
+        }
+
+        const clouds = [];
+        const cloudGeo = new THREE.BoxGeometry(4, 2, 3);
+        const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        for(let i=0; i<15; i++) {
+            const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+            cloud.position.set((Math.random()*60)-30, 15 + Math.random()*10, -i*20);
+            scene.add(cloud); clouds.push(cloud);
+        }
+
+        // --- 載入器 ---
+        const loader = new THREE.GLTFLoader();
+        let playerGroup = new THREE.Group(); scene.add(playerGroup);
+        let playerMesh, mixer;
+        let obstacleModel = null;
+        let coinModel = null;
+        let powerupModel = null;
+
+        const ts = new Date().getTime();
+        loader.load('coin.glb?v='+ts, (g) => { coinModel = g.scene; coinModel.traverse(n=>{if(n.isMesh){n.castShadow=true; n.material.color.setHex(0xFFD700);}}); }, undefined, ()=>{});
+        loader.load('powerup.glb?v='+ts, (g) => { powerupModel = g.scene; powerupModel.traverse(n=>{if(n.isMesh){n.castShadow=true; n.material.color.setHex(0x00FF00);}}); }, undefined, ()=>{});
+
+        let currentLane = 0; let isJumping = false; let jumpVelocity = 0;
+        const gravity = -0.03; const jumpStrength = 0.6;
+        let gameActive = false; let score = 0; let totalCoinsCollected = 0; let gameSpeed = 0.4;
+        
+        const bullets = []; const bulletSpeed = 1.5;
+        const bulletGeo = new THREE.SphereGeometry(0.2, 8, 8);
+        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+        let shotsPerFire = 1; let powerupTimer = null;
+
+        const obstacles = []; const coins = []; const powerups = [];
+
+        function loadPlayer(filename) {
+            while(playerGroup.children.length > 0) playerGroup.remove(playerGroup.children[0]); 
+            if (filename === 'none') {
+                const g = new THREE.BoxGeometry(1,1.5,1); const m = new THREE.MeshPhongMaterial({color: 0x00ffcc});
+                playerMesh = new THREE.Mesh(g, m); playerMesh.position.y = 0.75; playerMesh.castShadow = true;
+                playerGroup.add(playerMesh); return;
+            }
+            loader.load(filename + '?v=' + new Date().getTime(), (gltf) => {
+                playerMesh = gltf.scene; playerMesh.scale.set(0.8, 0.8, 0.8); playerMesh.rotation.y = Math.PI;
+                playerMesh.traverse(n => { if(n.isMesh) n.castShadow = true; });
+                playerGroup.add(playerMesh);
+                if(gltf.animations.length > 0) { mixer = new THREE.AnimationMixer(playerMesh); mixer.clipAction(gltf.animations[0]).play(); }
+            }, undefined, () => { loadPlayer('none'); });
+        }
+
+        function loadObstacleTemplate(filename) {
+            obstacleModel = null; if(filename === 'none') return;
+            loader.load(filename + '?v=' + new Date().getTime(), (gltf) => {
+                obstacleModel = gltf.scene; obstacleModel.traverse(n => { if(n.isMesh) n.castShadow = true; });
+            }, undefined, ()=>{});
+        }
+
+        function spawnObject() {
+            if(!gameActive) return;
+            const lane = Math.floor(Math.random()*3)-1; const zPos = -120;
+            const rnd = Math.random();
+            if(rnd < 0.6) { // 障礙物
+                let obs = obstacleModel ? obstacleModel.clone() : new THREE.Mesh(new THREE.BoxGeometry(2,2,2), new THREE.MeshPhongMaterial({color:0xff4444}));
+                obs.position.set(lane*2.5, 1, zPos); obs.userData = {type:'obstacle'};
+                scene.add(obs); obstacles.push(obs);
+            } else if (rnd < 0.9) { // 金幣
+                for(let i=0; i<3; i++) {
+                    let c = coinModel ? coinModel.clone() : new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.1,16), new THREE.MeshPhongMaterial({color:0xffff00}));
+                    if(!coinModel) c.rotation.x = Math.PI/2;
+                    c.position.set(lane*2.5, 1, zPos - i*3); c.userData = {active:true, type:'coin'};
+                    scene.add(c); coins.push(c);
+                }
+            } else { // 道具
+                let p = powerupModel ? powerupModel.clone() : new THREE.Mesh(new THREE.SphereGeometry(0.7), new THREE.MeshPhongMaterial({color:0x00ff00}));
+                p.position.set(lane*2.5, 1, zPos); p.userData = {active:true, type:'powerup'};
+                scene.add(p); powerups.push(p);
+            }
+        }
+
+        setInterval(spawnObject, 1000);
+        setInterval(()=>{ if(gameActive && gameSpeed < 1.8) gameSpeed += 0.002; }, 1000);
+
+        function fireBullet() {
+            playSFX('shoot');
+            const spread = shotsPerFire > 1 ? (shotsPerFire - 1) * 0.2 : 0;
+            for (let i = 0; i < shotsPerFire; i++) {
+                const b = new THREE.Mesh(bulletGeo, bulletMat);
+                const startX = playerGroup.position.x - spread / 2 + (i * (spread / (shotsPerFire > 1 ? shotsPerFire - 1 : 1)));
+                b.position.set(startX, playerGroup.position.y + 0.5, playerGroup.position.z);
+                scene.add(b); bullets.push(b);
+            }
+        }
+
+        function startGame() {
+            loadPlayer(document.getElementById('player-selector').value);
+            loadObstacleTemplate(document.getElementById('obstacle-selector').value);
+            document.getElementById('start-screen').style.display = 'none';
+            gameActive = true; if(audioCtx.state === 'suspended') audioCtx.resume();
+            startBGM();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if(!gameActive) return;
+            if(e.key === 'ArrowLeft' && currentLane > -1) currentLane--;
+            if(e.key === 'ArrowRight' && currentLane < 1) currentLane++;
+            if((e.key === 'ArrowUp' || e.code === 'Space') && !isJumping) { isJumping = true; jumpVelocity = jumpStrength; playSFX('jump'); }
+            if(e.key === 'z' || e.key === 'Z') fireBullet();
+        });
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if(mixer) mixer.update(delta);
+
+            // 環境
+            stripes.forEach(s => { s.position.z += gameSpeed; if(s.position.z > 10) s.position.z = -290; });
+            buildings.forEach(b => { b.position.z += gameSpeed; if(b.position.z > 20) { b.position.z = -580; b.scale.y = 10+Math.random()*30; b.position.y = b.scale.y/2; }});
+            clouds.forEach(c => { c.position.z += gameSpeed*0.5; if(c.position.z > 20) { c.position.z = -300; c.position.x = (Math.random()*60)-30; }});
+
+            if(!gameActive) return;
+
+            playerGroup.position.x += (currentLane*2.5 - playerGroup.position.x) * 0.15;
+            if(isJumping) { playerGroup.position.y += jumpVelocity; jumpVelocity += gravity; if(playerGroup.position.y<=0){playerGroup.position.y=0; isJumping=false;} } 
+            else { playerGroup.position.y = 0; }
+
+            // 子彈
+            for(let i=bullets.length-1; i>=0; i--) {
+                let b = bullets[i]; b.position.z -= bulletSpeed;
+                for(let j=obstacles.length-1; j>=0; j--) {
+                    let obs = obstacles[j];
+                    if(b.position.distanceTo(obs.position) < 1.8) {
+                        playSFX('hit'); scene.remove(b); bullets.splice(i,1);
+                        scene.remove(obs); obstacles.splice(j,1);
+                        score+=100; document.getElementById('score-val').innerText = score;
+                        break;
+                    }
+                }
+                if(b.position.z < -100) { scene.remove(b); bullets.splice(i,1); }
+            }
+
+            // 障礙物
+            for(let i=obstacles.length-1; i>=0; i--) {
+                obstacles[i].position.z += gameSpeed;
+                if(Math.abs(obstacles[i].position.z - playerGroup.position.z)<1.5 && 
+                   Math.abs(obstacles[i].position.x - playerGroup.position.x)<1.0 && playerGroup.position.y < 1.5) gameOver();
+                if(obstacles[i].position.z > 10) { scene.remove(obstacles[i]); obstacles.splice(i,1); score+=10; document.getElementById('score-val').innerText=score; }
+            }
+
+            // 金幣
+            coins.forEach(c => c.rotation.y += 0.1);
+            for(let i=coins.length-1; i>=0; i--) {
+                let c = coins[i]; c.position.z += gameSpeed;
+                if(c.userData.active && Math.abs(c.position.z-playerGroup.position.z)<1.5 && Math.abs(c.position.x-playerGroup.position.x)<1.0 && Math.abs(playerGroup.position.y-c.position.y)<1.5) {
+                    c.userData.active = false; scene.remove(c); coins.splice(i,1);
+                    totalCoinsCollected++; score+=50; 
+                    document.getElementById('coin-val').innerText=totalCoinsCollected; 
+                    document.getElementById('score-val').innerText=score; playSFX('coin');
+                } else if(c.position.z > 10) { scene.remove(c); coins.splice(i,1); }
+            }
+
+            // 道具
+            powerups.forEach(p => p.rotation.y += 0.05);
+            for(let i=powerups.length-1; i>=0; i--) {
+                let p = powerups[i]; p.position.z += gameSpeed;
+                if(p.userData.active && Math.abs(p.position.z-playerGroup.position.z)<1.5 && Math.abs(p.position.x-playerGroup.position.x)<1.0 && Math.abs(playerGroup.position.y-p.position.y)<1.5) {
+                    p.userData.active = false; scene.remove(p); powerups.splice(i,1);
+                    playSFX('powerup'); showMessage("🔥 3連發模式啟動！");
+                    
+                    shotsPerFire = 3; document.getElementById('shots-val').innerText = "Lv.MAX";
+                    if(powerupTimer) clearTimeout(powerupTimer);
+                    powerupTimer = setTimeout(() => {
+                        shotsPerFire = 1; document.getElementById('shots-val').innerText = "Lv.1";
+                        showMessage("⚠️ 武器系統冷卻");
+                    }, 10000);
+                } else if(p.position.z > 10) { scene.remove(p); powerups.splice(i,1); }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function gameOver() {
+            gameActive = false; clearInterval(bgmInterval); playSFX('crash');
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over-screen').style.display = 'flex';
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>
